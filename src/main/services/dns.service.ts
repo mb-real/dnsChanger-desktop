@@ -1,3 +1,4 @@
+import { ServerType } from '../../shared/interfaces/server.interface'
 import { Platform } from '../platforms/platform'
 
 export class DnsService {
@@ -5,6 +6,10 @@ export class DnsService {
 
 	async setDns(nameServers: Array<string>) {
 		return this.platform.setDns(nameServers)
+	}
+
+	async setDohDns(dohUrl: string) {
+		return this.platform.setDohDns(dohUrl)
 	}
 
 	async getActiveDns() {

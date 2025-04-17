@@ -6,7 +6,11 @@ import { v4 as uuid } from 'uuid'
 import LN from '../../i18n/i18n-node'
 import { Locales } from '../../i18n/i18n-types'
 import { EventsKeys } from '../../shared/constants/eventsKeys.constant'
-import { Server, ServerStore } from '../../shared/interfaces/server.interface'
+import {
+	Server,
+	ServerStore,
+	ServerType,
+} from '../../shared/interfaces/server.interface'
 import { isValidDnsAddress } from '../../shared/validators/dns.validator'
 import { dnsService } from '../config'
 import { WindowsPlatform } from '../platforms/windows/windows.platform'
@@ -30,7 +34,12 @@ ipcMain.handle(EventsKeys.SET_DNS, async (event, server: Server) => {
 			}
 		}
 
-		await dnsService.setDns(server.servers)
+		if (server.type === 'doh' && server.dohUrl) {
+			await dnsService.setDohDns(server.dohUrl)
+		} else {
+			await dnsService.setDns(server.servers)
+		}
+
 		const currentLng = LN[getCurrentLng()]
 		const win = BrowserWindow.getAllWindows()[0]
 		const filepath = await getOverlayIcon(server)
@@ -49,6 +58,51 @@ ipcMain.handle(EventsKeys.SET_DNS, async (event, server: Server) => {
 			server,
 			success: false,
 			message: 'Unknown error while connecting',
+		}
+	}
+})
+
+ipcMain.handle(EventsKeys.SET_DOH_DNS, async (event, server: Server) => {
+	try {
+		if (isWindows()) {
+			const winPlatform = new WindowsPlatform()
+			const isAvailableWmic = await winPlatform.isWmicAvailable()
+			if (!isAvailableWmic) {
+				return {
+					server,
+					success: false,
+					message: 'wmic_not_available',
+				}
+			}
+		}
+
+		if (!server.dohUrl) {
+			return {
+				server,
+				success: false,
+				message: 'DoH URL is required',
+			}
+		}
+
+		await dnsService.setDohDns(server.dohUrl)
+		const currentLng = LN[getCurrentLng()]
+		const win = BrowserWindow.getAllWindows()[0]
+		const filepath = await getOverlayIcon(server)
+		updateOverlayIcon(win, filepath, 'connected')
+
+		return {
+			server,
+			success: true,
+			message: currentLng.pages.home.connected({
+				currentActive: server.name,
+			}),
+		}
+	} catch (e) {
+		userLogger.error(e.stack, e.message)
+		return {
+			server,
+			success: false,
+			message: e.message || 'Unknown error while connecting to DoH server',
 		}
 	}
 })
@@ -103,18 +157,53 @@ ipcMain.handle(EventsKeys.ADD_DNS, async (event, data: Partial<Server>) => {
 			tags: [],
 			avatar: '',
 			rate: 0,
+			type: data.type || 'dns',
 		}
 
 		if (!defaultServer) {
 			store.set('defaultServer', server)
 		} else {
 			defaultServer.servers = data.servers
+			defaultServer.type = data.type || 'dns'
+			if (data.type === 'doh') {
+				defaultServer.dohUrl = data.dohUrl
+			}
 			store.set('defaultServer', defaultServer)
 		}
 
 		return { success: true, server: server }
 	}
 
+	// Handle DoH server
+	if (data.type === 'doh') {
+		if (!data.dohUrl) {
+			return { success: false, message: 'DoH URL is required' }
+		}
+
+		const list: Server[] = store.get('dnsList') || []
+
+		const newServer: ServerStore = {
+			key: data.key || uuid(),
+			name: data.name,
+			avatar: data.avatar || 'def.png',
+			servers: data.servers || [],
+			rate: data.rate || 0,
+			tags: data.tags || ['DoH'],
+			isPin: false,
+			type: 'doh',
+			dohUrl: data.dohUrl,
+		}
+
+		const isDupKey = list.find((s) => s.key === newServer.key)
+		if (isDupKey) newServer.key = uuid()
+
+		list.push(newServer)
+
+		store.set('dnsList', list)
+		return { success: true, server: newServer, servers: list }
+	}
+
+	// Regular DNS server handling
 	const nameServer1 = data.servers[0]
 	const nameServer2 = data.servers[1]
 	if (!nameServer1) return { success: false, message: 'DNS1 is required' }
@@ -138,11 +227,12 @@ ipcMain.handle(EventsKeys.ADD_DNS, async (event, data: Partial<Server>) => {
 	const newServer: ServerStore = {
 		key: data.key || uuid(),
 		name: data.name,
-		avatar: data.avatar,
+		avatar: data.avatar || 'def.png',
 		servers: data.servers,
 		rate: data.rate || 0,
 		tags: data.tags || [],
 		isPin: false,
+		type: 'dns',
 	}
 
 	const isDupKey = list.find((s) => s.key === newServer.key)
@@ -219,22 +309,53 @@ ipcMain.handle(EventsKeys.FLUSHDNS, async () => {
 
 ipcMain.handle(EventsKeys.PING, async (event, server: Server) => {
 	try {
-		const result = await pingLib.promise.probe(server.servers[0], {
+		let host: string
+
+		if (server.type === 'doh' && server.dohUrl) {
+			try {
+				const url = new URL(server.dohUrl)
+				host = url.hostname
+			} catch (error) {
+				host = server.servers[0] || 'dns.google.com'
+			}
+		} else {
+			host = server.servers[0]
+		}
+
+		if (!host) {
+			return {
+				success: false,
+				data: {
+					alive: false,
+					time: 0,
+				},
+			}
+		}
+
+		const result = await pingLib.promise.probe(host, {
 			timeout: 10,
 		})
+
 		return {
 			success: true,
 			data: {
 				alive: result.alive,
 				time: result.time,
+				host: host,
 			},
 		}
-	} catch {
+	} catch (error) {
+		userLogger.error(error?.stack, error?.message || 'Unknown ping error')
 		return {
 			success: false,
+			data: {
+				alive: false,
+				time: 0,
+			},
 		}
 	}
 })
+
 ipcMain.handle(EventsKeys.TOGGLE_PIN, async (event, server: Server) => {
 	const dnsList: ServerStore[] = store.get('dnsList')
 
@@ -276,18 +397,37 @@ async function getCurrentActive(): Promise<{
 	message?: string
 }> {
 	try {
-		const dns: string[] = await dnsService.getActiveDns()
+		const dnsInfo = await dnsService.getActiveDns()
+		const dns = dnsInfo.servers
+		const dnsType = dnsInfo.type
+		const dohUrl = dnsInfo.dohUrl
 
-		if (!dns.length) return { success: false, server: null }
+		if (!dns.length && dnsType !== 'doh')
+			return { success: false, server: null }
 
 		const servers = store.get('dnsList') || []
-		const server: ServerStore | null = servers.find(
-			(server) => server.servers.toString() === dns.toString(),
-		)
+		let server: ServerStore | null = null
+
+		if (dnsType === 'doh' && dohUrl) {
+			// For DoH servers, match by URL
+			server =
+				servers.find((s) => s.type === 'doh' && s.dohUrl === dohUrl) || null
+		} else {
+			// For regular DNS servers, match by IP addresses
+			server =
+				servers.find((s) => s.servers.toString() === dns.toString()) || null
+		}
+
 		const defaultServer = store.get('defaultServer')
 		if (defaultServer) {
 			// if default server is connected, then return it as not connected
-			if (defaultServer.servers.toString() === dns.toString()) {
+			if (
+				(dnsType === 'doh' &&
+					defaultServer.type === 'doh' &&
+					defaultServer.dohUrl === dohUrl) ||
+				(dnsType === 'dns' &&
+					defaultServer.servers.toString() === dns.toString())
+			) {
 				return {
 					success: false,
 					server: null,
@@ -295,31 +435,38 @@ async function getCurrentActive(): Promise<{
 				}
 			}
 		}
+
 		if (!server) {
+			// Create an unknown server entry
+			const unknownServer: Partial<ServerStore> = {
+				key: 'unknown',
+				servers: dns,
+				avatar: '',
+				isPin: false,
+			}
+
+			if (dnsType === 'doh' && dohUrl) {
+				unknownServer.type = 'doh'
+				unknownServer.dohUrl = dohUrl
+				unknownServer.name = `Unknown DoH (${new URL(dohUrl).hostname})`
+			} else {
+				unknownServer.type = 'dns'
+				unknownServer.name = 'unknown'
+			}
+
 			return {
 				success: true,
-				server: {
-					key: 'unknown',
-					servers: dns,
-					names: {
-						eng: 'unknown',
-						fa: 'unknown',
-					},
-					avatar: '',
-					isPin: false,
-				},
+				server: unknownServer,
 			}
 		}
 
 		const win = BrowserWindow.getAllWindows()[0]
-
 		const filepath = await getOverlayIcon(server)
-
 		updateOverlayIcon(win, filepath, 'connected')
 
 		return { success: true, server }
 	} catch (e) {
 		userLogger.error(e.stack, e.message)
-		return { success: false, message: 'Unknown error while clear DNS' }
+		return { success: false, message: 'Unknown error while getting active DNS' }
 	}
 }

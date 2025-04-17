@@ -38,15 +38,24 @@ export function ConnectButtonComponent() {
 				}
 			}
 		} else if (step == statusStep.DISCONNECT) {
-			// req connect
-			const response = await window.ipc.setDns(serversStateContext.selected)
+			const selectedServer = serversStateContext.selected
+			const isDohServer = selectedServer.type === 'doh'
+			const dohUrl = selectedServer.dohUrl
+
+			let response = { success: false, message: '' }
+			if (isDohServer && dohUrl) {
+				response = await window.ipc.setDohDns(selectedServer)
+			} else {
+				response = await window.ipc.setDns(selectedServer)
+			}
+
 			if (response.success) {
 				serversStateContext.setCurrentActive(serversStateContext.selected)
 				window.ipc.notif(response.message)
 				ReactGA.event({
 					category: 'User',
 					action: 'CONNECTED',
-					label: serversStateContext.selected.name,
+					label: `${serversStateContext.selected.name} (${isDohServer ? 'DoH' : 'DNS'})`,
 					value: 1,
 				})
 			} else {
@@ -120,6 +129,7 @@ export function ConnectButtonComponent() {
 		serversStateContext.currentActive?.key == serversStateContext.selected?.key
 	) {
 		//isConnect
+		const isDohServer = serversStateContext.selected.type === 'doh'
 		return (
 			<div>
 				<Button
@@ -135,20 +145,23 @@ export function ConnectButtonComponent() {
 						'mt-5 font-[balooTamma] text-2xl dark:text-white text-[#6B6A6A]'
 					}
 				>
-					Connected
+					Connected {isDohServer ? '(DoH)' : ''}
 				</div>
 			</div>
 		)
 	}
 
 	//disconnect Btn
+	const isDohServer = serversStateContext.selected?.type === 'doh'
 	return (
 		<div>
 			<Button
 				onClick={() => clickHandler(statusStep.DISCONNECT)}
 				shape={'circle'}
-				className="relative disconnectedBtn dark:bg-white bg-[#AFAFAF] border-none
-             outline -outline-offset-2 outline-8 outline-[#cfcfcf1a] hover:bg-[#AAA9A9] dark:hover:bg-gray-300 "
+				className={`relative disconnectedBtn dark:bg-white bg-[#AFAFAF] border-none
+             outline -outline-offset-2 outline-8 outline-[#cfcfcf1a] hover:bg-[#AAA9A9] dark:hover:bg-gray-300 ${
+								isDohServer ? 'connection-doh' : ''
+							}`}
 				style={{ width: 130, height: 130 }}
 			>
 				<span className="absolute inset-0 outline-[#cfcfcf1a] outline-8 "></span>

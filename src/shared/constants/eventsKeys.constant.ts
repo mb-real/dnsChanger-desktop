@@ -1,5 +1,6 @@
 export enum EventsKeys {
 	SET_DNS = 'dialogs:set-dns',
+	SET_DOH_DNS = 'dialogs:set-doh-dns',
 	CLEAR_DNS = 'dialogs:clear-dns',
 	ADD_DNS = 'dialogs:add-dns',
 	RELOAD_SERVER_LIST = 'reloadServerList',

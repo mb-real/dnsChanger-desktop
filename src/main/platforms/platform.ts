@@ -1,9 +1,16 @@
 import sudo from 'sudo-prompt'
+import { ServerType } from '../../shared/interfaces/server.interface'
 
 export abstract class Platform {
 	public abstract setDns(nameServers: string[]): Promise<void>
 
-	public abstract getActiveDns(): Promise<string[]>
+	public abstract setDohDns(dohUrl: string): Promise<void>
+
+	public abstract getActiveDns(): Promise<{
+		servers: string[]
+		type: ServerType
+		dohUrl?: string
+	}>
 
 	public abstract clearDns(): Promise<void>
 

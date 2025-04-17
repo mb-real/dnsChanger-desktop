@@ -2,17 +2,19 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from 'electron'
 
-import { Server, ServerStore } from '../shared/interfaces/server.interface'
+import os from 'node:os'
+import { store } from '../main/store/store'
 import { EventsKeys } from '../shared/constants/eventsKeys.constant'
+import { Server, ServerStore } from '../shared/interfaces/server.interface'
 import {
 	SettingInStore,
 	StoreKey,
 } from '../shared/interfaces/settings.interface'
-import os from 'node:os'
-import { store } from '../main/store/store'
 
 export const ipcPreload = {
 	setDns: (server: Server) => ipcRenderer.invoke(EventsKeys.SET_DNS, server),
+	setDohDns: (server: Server) =>
+		ipcRenderer.invoke(EventsKeys.SET_DOH_DNS, server),
 	clearDns: () => ipcRenderer.invoke(EventsKeys.CLEAR_DNS),
 	notif: (message: string) =>
 		ipcRenderer.send(EventsKeys.NOTIFICATION, message),

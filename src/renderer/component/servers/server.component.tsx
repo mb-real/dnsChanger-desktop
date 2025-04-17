@@ -1,14 +1,15 @@
 import React, { useEffect } from 'react'
-import { Tooltip } from 'react-daisyui'
+import { Badge, Tooltip } from 'react-daisyui'
 import { AiOutlineCloudServer } from 'react-icons/ai'
+import { SiSecurityscorecard } from 'react-icons/si'
 
-import { setState } from '../../interfaces/react.interface'
+import { useState } from 'react'
+import { useI18nContext } from '../../../i18n/i18n-react'
+import { Server } from '../../../shared/interfaces/server.interface'
 import { activityContext } from '../../context/activty.context'
 import { ActivityContext } from '../../interfaces/activty.interface'
-import { Server } from '../../../shared/interfaces/server.interface'
+import { setState } from '../../interfaces/react.interface'
 import { ServerOptionsComponent } from '../dropdowns/server-options/server-options.component'
-import { useI18nContext } from '../../../i18n/i18n-react'
-import { useState } from 'react'
 
 interface Props {
 	server: Server
@@ -25,7 +26,9 @@ export function ServerComponent(prop: Props) {
 	const [connecting, setConnecting] = useState<boolean>(false)
 	const [currentPing, setPing] = useState<number>(0)
 
-	const serverName = server.names[locale] || server.names.eng
+	const serverName = server.names?.[locale] || server.names?.eng || server.name
+	const isDohServer = server.type === 'doh'
+	const dohUrl = server.dohUrl || ''
 
 	async function clickHandler() {
 		try {
@@ -36,7 +39,7 @@ export function ServerComponent(prop: Props) {
 
 			activityContextData.setIsWaiting(true)
 
-			let response
+			let response = { success: false, message: '' }
 
 			if (isConnect) {
 				activityContextData.setStatus(LL.disconnecting())
@@ -47,7 +50,11 @@ export function ServerComponent(prop: Props) {
 				setConnecting(true)
 				activityContextData.setStatus(LL.connecting())
 
-				response = await window.ipc.setDns(server)
+				if (isDohServer && dohUrl) {
+					response = await window.ipc.setDohDns(server)
+				} else {
+					response = await window.ipc.setDns(server)
+				}
 
 				if (response.success) setCurrentActive(server)
 			}
@@ -77,16 +84,16 @@ export function ServerComponent(prop: Props) {
 			<div
 				className={`py-6 border-l-2 border-r-2 rounded-lg shadow-md mb-2 mt-1  
         ${isConnect ? 'dark:shadow-green-500/20 shadow-teal-300/20' : 'drop-shadow-lg'} 
-        border-gray-400 dark:border-gray-600  
+	border-gray-400 dark:border-gray-600  
         ${isConnect ? 'bg-green-500 text-white  hover:bg-red-500 hover:shadow-none' : 'hover:bg-green-500 text-accent-content'}
                 ${activityContextData.isWaiting && isConnect ? 'bg-red-400 animate-pulse shadow-none' : ''}
                 ${activityContextData.isWaiting && connecting ? 'bg-green-400 animate-pulse' : ''}
                 overflow-y-hidden
             `}
 			>
-				<div className="flex flex-nowrap ">
+				<div className="flex flex-nowrap">
 					<div
-						className="flex-none ml-2 relative"
+						className="relative flex-none ml-2"
 						onClick={() => !activityContextData.isWaiting && clickHandler()}
 					>
 						{typeof activityContextData.reqPing == 'boolean' &&
@@ -97,10 +104,10 @@ export function ServerComponent(prop: Props) {
 								)}`}
 							>
 								<div
-									className="w-1/2 grid place-items-center ml-auto"
+									className="grid w-1/2 ml-auto place-items-center"
 									style={{ textAlign: 'initial' }}
 								>
-									<code className={`leading-10 `}>
+									<code className={'leading-10'}>
 										{currentPing > 500 ? '500+' : currentPing}
 									</code>
 								</div>
@@ -112,26 +119,36 @@ export function ServerComponent(prop: Props) {
 								)}`}
 							>
 								<div
-									className="w-1/2 grid place-items-center ml-auto"
+									className="grid w-1/2 ml-auto place-items-center"
 									style={{ textAlign: 'initial' }}
 								>
 									<AiOutlineCloudServer
 										size={25}
-										className={`leading-10 mt-2 mr-5`}
+										className={'leading-10 mt-2 mr-5'}
 									/>
 								</div>
 							</div>
 						)}
 					</div>
 					<div
-						className="flex-1 w-20 cursor-pointer"
+						className="flex items-center flex-1 w-20 cursor-pointer"
 						onClick={() => !activityContextData.isWaiting && clickHandler()}
 					>
 						<Tooltip
 							message={isConnect ? LL.help_disconnect() : LL.help_connect()}
 							position={'bottom'}
 						>
-							<p className={'font-medium'}>{serverName}</p>
+							<div className="flex flex-row items-center">
+								<p className={'font-medium'}>{serverName}</p>
+								{isDohServer && (
+									<Tooltip message="DNS over HTTPS" position="bottom">
+										<Badge className="flex items-center px-2 py-1 ml-2 text-white bg-blue-500">
+											<SiSecurityscorecard className="mr-1" size={12} />
+											DoH
+										</Badge>
+									</Tooltip>
+								)}
+							</div>
 						</Tooltip>
 					</div>
 					<div className="flex-none w-14">

@@ -1,19 +1,20 @@
+import { Chip } from '@material-tailwind/react'
+import { useContext, useEffect, useState } from 'react'
 import { Avatar, Button } from 'react-daisyui'
 import { FiCopy } from 'react-icons/fi'
+import { SiSecurityscorecard } from 'react-icons/si'
 import { TfiReload } from 'react-icons/tfi'
-import { useContext, useEffect, useState } from 'react'
-import { serversContext } from '../../../context/servers.context'
-import { useI18nContext } from '../../../../i18n/i18n-react'
 import icon from '../../../../../public/icons/icon.png'
+import { useI18nContext } from '../../../../i18n/i18n-react'
+import { serversContext } from '../../../context/servers.context'
 import { getPingIcon } from '../../../utils/icons.util'
-import { Chip } from '@material-tailwind/react'
 interface Prop {
 	loadingCurrentActive: boolean
 }
 
 export function ServerInfoCardComponent(prop: Prop) {
 	const serversStateContext = useContext(serversContext)
-	const [isCopyAdds, setIsCopyAdds] = useState<boolean>(true)
+	const [isCopyAdds, setIsCopyAdds] = useState<boolean>(false)
 	const [ping, setPing] = useState<number>()
 	const { LL } = useI18nContext()
 
@@ -35,6 +36,7 @@ export function ServerInfoCardComponent(prop: Prop) {
 			.ping(serversStateContext.selected)
 			.then((res) => res.success && setPing(res.data.time))
 	}
+
 	if (!serversStateContext.selected) {
 		return (
 			<div
@@ -69,17 +71,38 @@ export function ServerInfoCardComponent(prop: Prop) {
 			</div>
 		)
 	}
+
 	const isConnect =
 		serversStateContext.currentActive?.key == serversStateContext.selected.key
 	const name =
 		serversStateContext.selected.name?.length > 14
-			? serversStateContext.selected.name.slice(0, 12) + '...'
+			? `${serversStateContext.selected.name.slice(0, 12)}...`
 			: serversStateContext.selected.name
 
 	const network =
 		serversStateContext.network?.length > 14
-			? serversStateContext.network.slice(0, 12) + '...'
+			? `${serversStateContext.network.slice(0, 12)}...`
 			: serversStateContext.network
+
+	const isDohServer = serversStateContext.selected.type === 'doh'
+	const dohUrl = serversStateContext.selected.dohUrl || ''
+
+	const getDohDomain = () => {
+		if (!dohUrl) return ''
+		try {
+			return new URL(dohUrl).hostname
+		} catch (e) {
+			return dohUrl
+		}
+	}
+
+	const displayAddress = isDohServer
+		? getDohDomain()
+		: serversStateContext.selected.servers[0]
+
+	const copyContent = isDohServer
+		? dohUrl
+		: serversStateContext.selected.servers.join(',')
 
 	return (
 		<div className="dark:bg-[#262626] bg-base-200 h-[189px] w-[362px] mt-5 rounded-[23px]">
@@ -98,34 +121,41 @@ export function ServerInfoCardComponent(prop: Prop) {
 							<img
 								src={`./servers-icon/${serversStateContext.selected.avatar}`}
 								alt=""
-								className="self-center w-5 h-5 rounded-full mr-1"
+								className="self-center w-5 h-5 mr-1 rounded-full"
 								onError={({ currentTarget }) => {
 									currentTarget.onerror = null // prevents looping
 									currentTarget.src = './servers-icon/def.png'
 								}}
 							/>
-							<span className="ml-1 inline-flex items-baseline text-sm">
+							<span className="inline-flex items-baseline ml-1 text-sm">
 								<span className="font-medium text-slate-900 dark:text-slate-200 ">
 									{name || 'Unknown'}
 								</span>
 							</span>
+							{isDohServer && (
+								<SiSecurityscorecard
+									className="ml-1 text-blue-500"
+									size={14}
+									title="Secure DNS (DoH)"
+								/>
+							)}
 						</div>
 					</div>
 				</div>
-				<div className={'flex flex-col gap-2 text-center  justify-center'}>
+				<div className={'flex flex-col gap-2 text-center justify-center'}>
 					<h3 className={'font-semibold text-gray-500'}>Ping</h3>
 
 					<div
-						className={'w-100 flex flex-row gap-1   justify-center text-center'}
+						className={'w-100 flex flex-row gap-1 justify-center text-center'}
 					>
 						<Button
 							color="ghost"
 							size="sm"
-							className="flex items-center gap-3  border-1 border-gray-300 dark:border-gray-900 bg-gray-300 dark:bg-gray-900 dark:hover:bg-gray-800 dark:hover:border-none"
+							className="flex items-center gap-3 bg-gray-300 border-gray-300 border-1 dark:border-gray-900 dark:bg-gray-900 dark:hover:bg-gray-800 dark:hover:border-none"
 							onClick={getPing}
 						>
 							{ping > 0 && getPingIcon(ping)}
-							<span className="ml-1 inline-flex items-baseline text-sm">
+							<span className="inline-flex items-baseline ml-1 text-sm">
 								<span className="font-medium text-slate-900 dark:text-slate-200">
 									{ping}
 								</span>
@@ -134,10 +164,12 @@ export function ServerInfoCardComponent(prop: Prop) {
 						</Button>
 					</div>
 				</div>
-				<div className={'flex flex-col gap-2 text-center  justify-center'}>
-					<h3 className={'font-semibold text-gray-500'}>Address</h3>
+				<div className={'flex flex-col gap-2 text-center justify-center'}>
+					<h3 className={'font-semibold text-gray-500'}>
+						{isDohServer ? 'DoH URL' : 'Address'}
+					</h3>
 					<div
-						className={'w-100 flex flex-row gap-2   justify-center text-center'}
+						className={'w-100 flex flex-row gap-2 justify-center text-center'}
 					>
 						{isCopyAdds ? (
 							<Button
@@ -145,8 +177,8 @@ export function ServerInfoCardComponent(prop: Prop) {
 								size="sm"
 								className="flex items-center gap-3"
 							>
-								<span className="ml-1 inline-flex items-baseline text-sm">
-									<span className="font-medium text-slate-900 dark:text-slate-200 normal-case">
+								<span className="inline-flex items-baseline ml-1 text-sm">
+									<span className="font-medium normal-case text-slate-900 dark:text-slate-200">
 										Copied!
 									</span>
 								</span>
@@ -155,18 +187,15 @@ export function ServerInfoCardComponent(prop: Prop) {
 							<Button
 								color="ghost"
 								size="sm"
-								className="flex items-center gap-3  border-1 border-gray-300 dark:border-gray-900 bg-gray-300 dark:bg-gray-900 dark:hover:bg-gray-800 dark:hover:border-none"
+								className="flex items-center gap-3 bg-gray-300 border-gray-300 border-1 dark:border-gray-900 dark:bg-gray-900 dark:hover:bg-gray-800 dark:hover:border-none"
 								onClick={() => {
-									navigator.clipboard.writeText(
-										serversStateContext.selected.servers.join(','),
-									)
+									navigator.clipboard.writeText(copyContent)
 									setIsCopyAdds(true)
 								}}
 							>
-								<span className="ml-1 inline-flex items-baseline text-sm">
+								<span className="inline-flex items-baseline ml-1 text-sm">
 									<span className="font-medium text-slate-900 dark:text-slate-200">
-										{serversStateContext.selected.servers[0].slice(0, 10) +
-											'...'}
+										{`${displayAddress?.toString().slice(0, 10)}...`}
 									</span>
 								</span>
 								<FiCopy />
@@ -174,14 +203,14 @@ export function ServerInfoCardComponent(prop: Prop) {
 						)}
 					</div>
 				</div>
-				<div className={'flex flex-col gap-2 text-center  justify-center'}>
+				<div className={'flex flex-col gap-2 text-center justify-center'}>
 					{window.os.os == 'win32' ? (
 						<>
-							<h3 className={'font-semi-bold  text-gray-500'}>Network</h3>
+							<h3 className={'font-semi-bold text-gray-500'}>Network</h3>
 
 							<div
 								className={
-									'w-100 flex flex-row gap-1   justify-center text-center'
+									'w-100 flex flex-row gap-1 justify-center text-center'
 								}
 							>
 								{
@@ -190,7 +219,7 @@ export function ServerInfoCardComponent(prop: Prop) {
 										color={isConnect ? 'green' : 'red'}
 										size="sm"
 										value={network}
-										className={`font-[0px]  ${isConnect ? 'text-[#42A752]' : 'text-[#B43D3D]'}`}
+										className={`font-[0px] ${isConnect ? 'text-[#42A752]' : 'text-[#B43D3D]'}`}
 										icon={
 											<span
 												className={`content-[''] block w-2 h-2 rounded-full mx-auto mt-1 ${
@@ -204,11 +233,11 @@ export function ServerInfoCardComponent(prop: Prop) {
 						</>
 					) : (
 						<>
-							<h3 className={'font-semibold  text-gray-500'}>Status</h3>
+							<h3 className={'font-semibold text-gray-500'}>Status</h3>
 
 							<div
 								className={
-									'w-100 flex flex-row gap-1   justify-center text-center'
+									'w-100 flex flex-row gap-1 justify-center text-center'
 								}
 							>
 								{
@@ -217,7 +246,7 @@ export function ServerInfoCardComponent(prop: Prop) {
 										color={isConnect ? 'green' : 'red'}
 										size="sm"
 										value={isConnect ? 'Connected' : 'Disconnected'}
-										className={`font-[0px]  ${isConnect ? 'text-[#42A752]' : 'text-[#B43D3D]'}`}
+										className={`font-[0px] ${isConnect ? 'text-[#42A752]' : 'text-[#B43D3D]'}`}
 										icon={
 											<span
 												className={`content-[''] block w-2 h-2 rounded-full mx-auto mt-1 ${

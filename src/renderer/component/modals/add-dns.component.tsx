@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react'
 
-import { setState } from '../../interfaces/react.interface'
-import { useI18nContext } from '../../../i18n/i18n-react'
 import {
+	Alert,
 	Button,
 	Card,
 	CardBody,
 	CardFooter,
 	Dialog,
-	Tabs,
-	TabsHeader,
-	TabsBody,
 	Tab,
 	TabPanel,
-	Alert,
+	Tabs,
+	TabsBody,
+	TabsHeader,
 } from '@material-tailwind/react'
+import { useI18nContext } from '../../../i18n/i18n-react'
+import { ServerType } from '../../../shared/interfaces/server.interface'
+import { setState } from '../../interfaces/react.interface'
 import { appNotif } from '../../notifications/appNotif'
 
 interface Props {
@@ -24,18 +25,21 @@ interface Props {
 }
 
 const ipv4Pattern = /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/
+const dohUrlPattern =
+	/^https:\/\/[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])*\/dns-query$/
 
 export function AddDnsModalComponent(props: Props) {
 	const [serverName, setServerName] = useState<string>('')
 	const [validationMessage, setValidationMessage] = useState<string>('')
+	const [dohUrl, setDohUrl] = useState<string>('')
 
-	const [type, setType] = useState<'ipv4' | 'default'>('ipv4')
+	const [type, setType] = useState<'ipv4' | 'default' | 'doh'>('ipv4')
 	const { LL } = useI18nContext()
 
 	useEffect(() => {
 		if (!props.isOpen) return
 		const defServer = window.storePreload.get('defaultServer')
-		if (defServer && defServer.servers) {
+		if (defServer?.servers) {
 			setDNSAddressToInput('def-serverInput-1', defServer.servers[0])
 			setDNSAddressToInput('def-serverInput-2', defServer.servers[1])
 		}
@@ -50,7 +54,7 @@ export function AddDnsModalComponent(props: Props) {
 
 	async function addHandler() {
 		try {
-			let resp
+			let resp: any = { success: false, message: '' }
 
 			if (type === 'default') {
 				const nameServer1Default = getNameServer('def-serverInput-1')
@@ -68,6 +72,25 @@ export function AddDnsModalComponent(props: Props) {
 				resp = await window.ipc.addDns({
 					name: 'default',
 					servers: [nameServer1Default, nameServer2Default],
+					type: 'dns' as ServerType,
+				})
+			} else if (type === 'doh') {
+				if (!serverName)
+					return setValidationMessage('Server name cannot be empty')
+				if (serverName === 'default')
+					return appNotif('Error', 'Server name cannot be "default"', 'ERROR')
+
+				if (!dohUrl) return setValidationMessage('DoH URL cannot be empty')
+
+				if (!dohUrl.startsWith('https://')) {
+					return setValidationMessage('DoH URL must start with https://')
+				}
+
+				resp = await window.ipc.addDns({
+					name: serverName,
+					servers: [],
+					type: 'doh' as ServerType,
+					dohUrl: dohUrl,
 				})
 			} else {
 				if (!serverName)
@@ -82,7 +105,6 @@ export function AddDnsModalComponent(props: Props) {
 				}
 
 				const nameServer2 = getNameServer('serverInput-2')
-				console.log('nameServer2', nameServer2, ipv4Pattern.test(nameServer2))
 				if (nameServer2 && !ipv4Pattern.test(nameServer2)) {
 					setValidationMessage(`Invalid DNS Address ${nameServer2}`)
 					return
@@ -91,6 +113,7 @@ export function AddDnsModalComponent(props: Props) {
 				resp = await window.ipc.addDns({
 					name: serverName,
 					servers: [nameServer1, nameServer2],
+					type: 'dns' as ServerType,
 				})
 			}
 
@@ -111,6 +134,7 @@ export function AddDnsModalComponent(props: Props) {
 				}
 
 				setServerName('')
+				setDohUrl('')
 
 				if (resp.server.name !== 'default') props.cb(resp.server)
 			} else {
@@ -162,13 +186,13 @@ export function AddDnsModalComponent(props: Props) {
 	function getNameServer(className: string): string | null {
 		const inputs: any = document.querySelectorAll(`.${className}`)
 		let server = ''
-		inputs.forEach((inp: any) => {
-			if (!inp.value) return
+		for (const inp of inputs) {
+			if (!inp.value) continue
 			server += inp.value
 			if (inp.nextElementSibling && inp.nextElementSibling.tagName === 'SPAN') {
 				server += '.'
 			}
-		})
+		}
 		return server
 	}
 
@@ -176,12 +200,12 @@ export function AddDnsModalComponent(props: Props) {
 		const inputs: any = document.querySelectorAll(`.${className}`)
 		let index = 0
 		const splietedServer = server.split('.')
-		inputs.forEach((inp: any) => {
-			if (index === 4) return
-			if (!splietedServer[index]) return
+		for (const inp of inputs) {
+			if (index === 4) break
+			if (!splietedServer[index]) break
 			inp.value = splietedServer[index]
 			index++
-		})
+		}
 	}
 
 	function clipboardHandler(clipText: string | null) {
@@ -238,6 +262,13 @@ export function AddDnsModalComponent(props: Props) {
 								IPV4
 							</Tab>
 							<Tab
+								value="doh"
+								className="dark:text-gray-200 font-[balooTamma]"
+								onClick={() => setType('doh')}
+							>
+								DoH
+							</Tab>
+							<Tab
 								value="default"
 								className="dark:text-gray-200 font-[balooTamma]"
 								onClick={() => setType('default')}
@@ -279,7 +310,7 @@ export function AddDnsModalComponent(props: Props) {
 												</Alert>
 											)}
 
-											<div className="flex flex-row w-full gap-2 justify-between items-center mt-2">
+											<div className="flex flex-row items-center justify-between w-full gap-2 mt-2">
 												<span className="text-gray-700 font-[balooTamma] dark:text-gray-300 text-[12px]">
 													Preferred DNS server:
 													<span className="text-red-500 text-[20px]">*</span>
@@ -291,7 +322,7 @@ export function AddDnsModalComponent(props: Props) {
 												</div>
 											</div>
 
-											<div className="flex flex-row w-full gap-2 justify-between items-center mt-2">
+											<div className="flex flex-row items-center justify-between w-full gap-2 mt-2">
 												<span className="text-gray-700 font-[balooTamma] dark:text-gray-300 text-[12px]">
 													Alternate DNS server:
 												</span>
@@ -300,6 +331,62 @@ export function AddDnsModalComponent(props: Props) {
 														InputDNS(index, 'serverInput-2', onChange),
 													)}
 												</div>
+											</div>
+										</div>
+									</section>
+								</div>
+							</TabPanel>
+							<TabPanel value="doh">
+								<div className={'grid'}>
+									<div>
+										<div className="label">
+											<span className="label-text text-lg font-[balooTamma]">
+												Name
+											</span>
+										</div>
+										<input
+											type="text"
+											onChange={(e) => setServerName(e.target.value)}
+											value={serverName}
+											defaultValue={serverName}
+											placeholder="e.g. Cloudflare DoH"
+											className="w-full h-8 max-w-xs text-gray-600 dark:text-gray-500 font-[Inter] outline outline-1
+                      outline-gray-700/20
+                      dark:outline-none
+                      dark:placeholder-gray-50/20 rounded focus-visible:outline-none focus-visible:ring-2
+                       focus-visible:ring-indigo-500 pl-2 transition duration-200 ease-in-out"
+										/>
+									</div>
+									<section className="mt-2">
+										<div className={'flex flex-col h-full w-full'} dir={'ltr'}>
+											{validationMessage && (
+												<Alert
+													color="red"
+													variant="ghost"
+													className="text-[12px] border-l-4 border-[#c92e2e] dark:text-red-400 font-[Inter] h-2 text-center flex items-center"
+												>
+													{validationMessage}
+												</Alert>
+											)}
+											<p className="text-[13px] dark:text-gray-400 font-[Inter] bg-[#f2f2f2] dark:bg-[#262626] p-2 rounded-md mb-2">
+												DNS over HTTPS (DoH) encrypts your DNS queries for
+												enhanced privacy. Enter the DoH provider's URL below.
+											</p>
+											<div className="flex flex-row items-center justify-between w-full gap-2 mt-2">
+												<span className="text-gray-700 font-[balooTamma] dark:text-gray-300 text-xs">
+													URL:
+													<span className="text-red-500 text-[20px]">*</span>
+												</span>
+												<input
+													type="text"
+													onChange={(e) => setDohUrl(e.target.value)}
+													value={dohUrl}
+													placeholder="https://dns.example.com/dns-query"
+													className="w-full h-8 text-gray-600 dark:text-gray-500 font-[Inter] outline outline-1
+													outline-gray-700/20 dark:outline-none dark:placeholder-gray-50/20 rounded 
+													focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 
+													px-2 transition duration-200 ease-in-out"
+												/>
 											</div>
 										</div>
 									</section>
@@ -315,7 +402,7 @@ export function AddDnsModalComponent(props: Props) {
 									</div>
 									<div className={''}>
 										<div className={'gap-1 grid grid-cols-1'} dir={'ltr'}>
-											<div className="flex flex-row w-full gap-2 justify-between items-center mt-2">
+											<div className="flex flex-row items-center justify-between w-full gap-2 mt-2">
 												<span className="text-gray-700 font-[balooTamma] dark:text-gray-300 text-[12px]">
 													Preferred DNS server:
 													<span className="text-red-500 text-[20px]">*</span>
@@ -327,7 +414,7 @@ export function AddDnsModalComponent(props: Props) {
 												</div>
 											</div>
 
-											<div className="flex flex-row w-full gap-2 justify-between items-center mt-2">
+											<div className="flex flex-row items-center justify-between w-full gap-2 mt-2">
 												<span className="text-gray-700 font-[balooTamma] dark:text-gray-300 text-[12px]">
 													Alternate DNS server:
 												</span>
@@ -344,7 +431,7 @@ export function AddDnsModalComponent(props: Props) {
 						</TabsBody>
 					</Tabs>
 				</CardBody>
-				<CardFooter className="pt-0 flex flex-row py-2">
+				<CardFooter className="flex flex-row py-2 pt-0">
 					<Button
 						variant="text"
 						className="normal-case font-[balooTamma] text-xl"
