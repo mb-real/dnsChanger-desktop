@@ -1,8 +1,8 @@
 import network from 'network'
 import sudo from 'sudo-prompt'
 
-import { userLogger } from 'src/main/shared/logger'
 import { ServerType } from '../../../shared/interfaces/server.interface'
+import { userLogger } from '../../shared/logger'
 import { store } from '../../store/store'
 import { Platform } from '../platform'
 import { Interface } from './interfaces/interface'

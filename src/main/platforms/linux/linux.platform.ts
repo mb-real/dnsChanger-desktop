@@ -1,8 +1,8 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { app } from 'electron'
-import { userLogger } from 'src/main/shared/logger'
 import { ServerType } from '../../../shared/interfaces/server.interface'
+import { userLogger } from '../../shared/logger'
 import { Platform } from '../platform'
 
 export class LinuxPlatform extends Platform {
